@@ -1,93 +1,119 @@
+/*********************************
+Autor: Fernando Krein Pinheiro
+Data: 04/07/2012
+Linguagem: C
+========= IMPORTANTE ===========
+O código esta livre para usar,
+citar e compartilhar desde que
+mantida sua fonte e seu autor.
+Obrigado.
+*********************************
+*/
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
+#include <stdlib.h>
 #include <sys/types.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
-
-
-#define SERVER_IP "127.0.0.1"
-#define BYTE 1024
-#define PORTA 8585
-#define TITULO "\n    ############### BeM VinDo ###############\n\n"
-
-void imprimirAguarde(void);
-
-/************************
-*          MAIN         *
-************************/
-main ()
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/ioctl.h>
+#include <pthread.h>
+ 
+void* Servidor(void* arg)
 {
-
-    char mensagem[BYTE], *loc;
-    int tbuf, skt, escolha;
-    struct sockaddr_in serv;
-    system("clear");
-
-    /**INICIALIZA ESTRUTURA SOCKETS*/
-    skt = socket(AF_INET, SOCK_STREAM, 0);
-    serv.sin_family = AF_INET;
-    serv.sin_addr.s_addr = inet_addr(SERVER_IP);
-    serv.sin_port = htons (PORTA);
-    memset (&(serv.sin_zero), 0x00, sizeof (serv.sin_zero));
-
-    /**INICIA COMUNICAÇÃO COM SERVIDOR*/
-    while(connect (skt, (struct sockaddr *)&serv, sizeof (struct sockaddr)) != 0){
-        imprimirAguarde();      ///AGUARDA SERVIDOR SE COMUNICAR
+    /*Buffer de entrada (armazena buffer do cliente)*/
+    char buffer_do_cliente[256];
+    /*Cast do ponteiro*/
+    int sockEntrada = *(int *) arg;
+    /*Loop "infinito"*/
+    printf("Aguardando as mensagens... ");
+    for (;;)
+    {
+        /*Le o que vem do cliente*/
+        read(sockEntrada, buffer_do_cliente, sizeof (buffer_do_cliente));
+        if (strcmp(buffer_do_cliente, "sair") != 0)
+        {
+            /*Se buffer == sair cai fora*/
+            printf("%s\n",buffer_do_cliente);
+        }
+        else
+             {
+                 /*Encerra o descritor*/
+                 close(sockEntrada);
+                 /*Encerra a thread*/
+                 pthread_exit((void*) 0);
+             }
     }
-    printf(">> A Conexao com o Servidor %s foi estabelecida na porta %d \n\n",SERVER_IP,PORTA);
-    printf(">> Envie /x pra sair \n\n");
-
-
-    /**RECEBE MENSAGEM DO SERVIDOR*/
-    tbuf = recv (skt, mensagem, BYTE, 0);
-    mensagem[tbuf] = 0x00;
-    printf (">: %s\n",mensagem);
-
-    /**ENVIA MENSAGEM PARA O SERVIDOR*/
-    strcpy(mensagem, "Cliente diz: olá!!!");
-    send(skt, mensagem, strlen(mensagem), 0 );
-
-
-    /**LOOP DE COMUNICAÇÃO ENTRE CLIENTE E SERVIDOR*/
-    do{
-        ///envia
-        printf("> ");
-        gets(mensagem);
-        send(skt, mensagem, strlen(mensagem), 0);
-
-        ///recebe
-        tbuf = recv (skt, mensagem, BYTE, 0);
-        mensagem[tbuf] = 0x00;
-        printf (">: Servidor diz: %s\n",mensagem);
-
-    }while(strcmp(mensagem,"/x")!= 0);    ///COMUNICAÇÃO SE ENCERRA QUANDO USUARIO DIGITAR /X
-
-
-    /**FINALIZA CONEXÃO*/
-    close(skt);
-    printf (">>A conexao com o servidor foi finalizada!!!\n\n");
-    exit(0);
 }
-
-
-
-/**************************************************************
-*   FUNÇÃO RESPOSÁVEL POR IMPRIMIR MENSAGER NA TELA           *
-*   ENQUANTO AGUARDA ALGUM SERVIDOR ESTABELECER COMUNICAÇÃO   *
-***************************************************************/
-void imprimirAguarde(){
-    int i=0;
-    char dot[12] = "";
-    for(i=0; i<4;i++){
-        system("clear");
-        printf(TITULO);
-        printf("\n\nProcurando servidor.");
-        printf("\nAguarde %s\n\n", dot);
-        strcat(dot,".");
-        sleep(1);
+ 
+int configuracaoServidor()
+{
+    /*Cria o descritor*/
+    int sockfd;
+    /*Declaracao da estrutura*/
+    struct sockaddr_in serverAddr;
+    /*Cria o socket*/
+    if ((sockfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+    {
+      printf("Erro no Socket\n");
+      exit(1);
     }
-    strcpy(dot, "");
+    /*Zera a estrutura*/
+    memset(&serverAddr, 0, sizeof (serverAddr));
+    /*Seta a familia*/
+    serverAddr.sin_family = AF_INET;
+    /*Seta os IPS (A constante INADDR_ANY e todos os ips ou qualquer ip) htonl -> conversao*/
+    serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    /*Define a porta*/
+    serverAddr.sin_port = htons(6881);
+    /*Faz a bindagem (cola, gruda, conecta seja o que for)*/
+    if (bind(sockfd, (struct sockaddr *) & serverAddr, sizeof (serverAddr)) < 0)
+    {
+      printf("Erro no Socket\n");
+      exit(1);
+     }
+    /*Fica na escuta de ate 5 clientes*/
+    if (listen(sockfd, 5) < 0)
+    {
+      printf("Erro no Socket\n");
+      exit(1);
+    }
+    return sockfd;
+}
+ 
+int main()
+{
+    system("clear");
+    /*Declaracao da estrutura*/
+    struct sockaddr_in serverAddr;
+    /*Retorna da funcao e o descritor*/
+    int sockfd = configuracaoServidor();
+ 
+    /*Loop "infinito"*/
+    while (1)
+    {
+        int clienteSockfd;
+        struct sockaddr_in clienteAddr;
+        /*tamanho da estrutura*/
+        unsigned int clntLen;
+        clntLen = sizeof (clienteAddr);
+        /*declara uma thread*/
+    pthread_t thread;
+    /*Fica no aguardo da conexao do cliente*/
+        if ((clienteSockfd = accept(sockfd, (struct sockaddr *) & clienteAddr, &clntLen)) < 0)
+        {
+      printf("Erro no Socket\n");
+      exit(1);
+    }
+        /*Inicializa a thread*/
+        if (pthread_create(&thread, NULL, Servidor, &clienteSockfd) != 0)
+       {
+            printf("Erro na Thread\n");
+            exit(1);
+       }
+ 
+        pthread_detach(thread);
+    }
+    exit(0);
 }
