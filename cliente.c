@@ -1,63 +1,70 @@
-// Cliente socket
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
+#include <errno.h>
+#include <math.h>
+#include <string.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
-#include <netdb.h> // define a estrutura hostent, que será usada abaixo.
+#include <arpa/inet.h>
+#include <netdb.h>
 
-void error(const char *msg){
-  perror(msg);
-  exit(0);
+#define SERVER_IP "193.136.93.147"	
+#define SERVERPORT "4950" // porto
+#define MAXBUFLEN 100
+
+int main(int argc, char *argv[])
+{
+int num =0;
+int sockfd;
+struct addrinfo hints, *servinfo, *p;
+int rv;
+int numbytes;
+char mensagem[MAXBUFLEN];
+char temp [33];
+
+memset(&hints, 0, sizeof hints);
+hints.ai_family = AF_UNSPEC;
+hints.ai_socktype = SOCK_DGRAM;
+
+if ((rv = getaddrinfo(SERVER_IP, SERVERPORT, &hints, &servinfo)) != 0) {
+ fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+ return 1;
 }
-int main(int argc, char const **argv){
 
-  int servidor, porta, n;
-  struct sockaddr_in serv_addr;
-  struct hostent *server;
+// pesquisa os resultados e cria a socket
+for(p = servinfo; p != NULL; p = p->ai_next) {
+ if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+	 perror("talker: socket");
+	 continue;
+ }
 
-  char buffer[256];
-  if(argc < 3){
-    printf("Entre com o servidor e a porta: ex: 127.0.0.1 3333 \n");
-    exit(0);
-  }
-  porta = atoi(argv[2]);
-  servidor = socket(AF_INET, SOCK_STREAM, 0);
-  if(servidor < 0)
-    error("Erro no servidor socker");
-  server = gethostbyname(argv[1]);
-  if(server == NULL)
-    fprintf(stderr,"ERROR, no such host\n");
-  bzero((char *) &serv_addr,sizeof(serv_addr));
+ break;
+ }
 
-  serv_addr.sin_family  = AF_INET;
-  bcopy((char *)server->h_addr,(char *)&serv_addr.sin_addr.s_addr, server->h_length);
+if (p == NULL) {
+ fprintf(stderr, "clinete: failed to bind socket\n");
+ return 2;
+}
 
-  serv_addr.sin_port = htons(porta);
+for(num=0; num<100; num++) {
+temp[0]='\0';
+mensagem[0]='\0';
+strncpy(mensagem, "mensgem num x ", 14);
+snprintf(temp, 33, "%d", num);
+strncpy(mensagem+14, temp,33);
+//mensagem[46]='\0';
+printf("%s \n", mensagem);
 
-  // Inicio da conexão
-  if(connect(servidor,(struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    error("Erro ao conectar");
+if ((numbytes = sendto(sockfd, mensagem, strlen(mensagem), 0, p->ai_addr, p->ai_addrlen)) == -1) {
+perror("cliente: a enviar");
+exit(1);
+}
 
-  printf("Welcome to server\n");
+//freeaddrinfo(servinfo);
+}
+close(sockfd);
 
-  printf("Por favor, entre com a Mensagem: ");
-
-  bzero(buffer, 256);
-  fgets(buffer,255,stdin);
-  n = write(servidor, buffer, strlen(buffer));
-  if(n < 0)
-    error("Erro ao escrever no sock");
-  bzero(buffer, 256);
-  n = read(servidor, buffer, 255);
-  if(n < 0)
-    error("Erro as ler o sock");
-  printf("%s\n",buffer);
-
-  close(servidor);
-
-  return 0;
+return 0;
 }
