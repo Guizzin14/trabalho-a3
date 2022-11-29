@@ -11,7 +11,7 @@
 #define PORTA 8585
 #define BYTE 1024
 
-main(){
+int main(){
         char mensagem[BYTE], *loc;
         int pontarq, tbuf, skt, tskt, escolha;
         struct sockaddr_in serv;
@@ -40,9 +40,9 @@ main(){
         /**ENVIA MENSAGEM PARA CLIENTE*/
         strcpy(mensagem,"Servidor diz: olá!!!");
         send(skt,mensagem,strlen(mensagem), 0);
-        sendto()
-        send()
-        sent
+        sendto();
+        send();
+        sent;
         /**RECEBE MENSAGEM DE CLIENTE*/
         tbuf = recv(skt, mensagem,BYTE, 0);
         mensagem[tbuf]=0x00;
