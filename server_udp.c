@@ -1,8 +1,17 @@
-#include <windows.h>
-#include <winsock.h>
-#include <stdio.h>
+/* fpont 12/99 */
+/* pont.net    */
+/* udpServer.c */
 
-#define LOCAL_SERVER_PORT 6000
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <unistd.h> /* close() */
+#include <string.h> /* memset() */
+
+#define LOCAL_SERVER_PORT 1500
 #define MAX_MSG 100
 
 int main(int argc, char *argv[]) {
@@ -11,14 +20,9 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in cliAddr, servAddr;
   char msg[MAX_MSG];
 
-  WSADATA wsaData;
-        
-  WSAStartup(MAKEWORD(2,1),&wsaData);
-  
-      /* socket creation */
+  /* socket creation */
   sd=socket(AF_INET, SOCK_DGRAM, 0);
   if(sd<0) {
-    printf("valor de sd: %d",sd);
     printf("%s: cannot open socket \n",argv[0]);
     exit(1);
   }
@@ -60,8 +64,6 @@ int main(int argc, char *argv[]) {
 	   ntohs(cliAddr.sin_port),msg);
     
   }/* end of server infinite loop */
- closesocket(sd);
- WSACleanup();
 
 return 0;
 
