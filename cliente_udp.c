@@ -1,86 +1,81 @@
-/*** IBMCOPYR ********************************************************/
-/*                                                                   */
-/* Component Name: UDPC                                              */
-/*                                                                   */
-/*                                                                   */
-/* Copyright:    Licensed Materials - Property of IBM                */
-/*                                                                   */
-/*               "Restricted Materials of IBM"                       */
-/*                                                                   */
-/*               5647-A01                                            */
-/*                                                                   */
-/*               (C) Copyright IBM Corp. 1977, 1998                  */
-/*                                                                   */
-/*               US Government Users Restricted Rights -             */
-/*               Use, duplication or disclosure restricted by        */
-/*               GSA ADP Schedule Contract with IBM Corp.            */
-/*                                                                   */
-/* Status:       CSV2R6                                              */
-/*                                                                   */
-/*  SMP/E Distribution Name: EZAEC020                                */
-/*                                                                   */
-/*** IBMCOPYR ********************************************************/
+/* fpont 12/99 */
+/* pont.net    */
+/* udpClient.c */
 
-static char ibmcopyr[] =
-   "UPDC     - Licensed Materials - Property of IBM. "
-   "This module is \"Restricted Materials of IBM\" "
-   "5647-A01 (C) Copyright IBM Corp. 1992, 1996. "
-   "See IBM Copyright Instructions.";
-
-#include <manifest.h>
-#include <bsdtypes.h>
-#include <in.h>
-#include <socket.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <string.h> /* memset() */
+#include <sys/time.h> /* select() */ 
 
-main(argc, argv)
-int argc;
-char **argv;
-{
+#define REMOTE_SERVER_PORT 1500
+#define MAX_MSG 100
 
 
-   int s;
-   unsigned short port;
-   struct sockaddr_in server;
-   char buf[32];
+int main(int argc, char *argv[]) {
+  
+  int sd, rc, i;
+  struct sockaddr_in cliAddr, remoteServAddr;
+  struct hostent *h;
 
-   /* argv[1] is internet address of server argv[2] is port of server.
-    * Convert the port from ascii to integer and then from host byte
-    * order to network byte order.
-    */
-   if(argc != 3)
-   {
-      printf("Usage: %s <host address> <port> \n",argv[0]);
+  /* check command line args */
+  if(argc<3) {
+    printf("usage : %s <server> <data1> ... <dataN> \n", argv[0]);
+    exit(1);
+  }
+
+  /* get server IP address (no check if input is IP address or DNS name */
+  h = gethostbyname(argv[1]);
+  if(h==NULL) {
+    printf("%s: unknown host '%s' \n", argv[0], argv[1]);
+    exit(1);
+  }
+
+  printf("%s: sending data to '%s' (IP : %s) \n", argv[0], h->h_name,
+	 inet_ntoa(*(struct in_addr *)h->h_addr_list[0]));
+
+  remoteServAddr.sin_family = h->h_addrtype;
+  memcpy((char *) &remoteServAddr.sin_addr.s_addr, 
+	 h->h_addr_list[0], h->h_length);
+  remoteServAddr.sin_port = htons(REMOTE_SERVER_PORT);
+
+  /* socket creation */
+  sd = socket(AF_INET,SOCK_DGRAM,0);
+  if(sd<0) {
+    printf("%s: cannot open socket \n",argv[0]);
+    exit(1);
+  }
+  
+  /* bind any port */
+  cliAddr.sin_family = AF_INET;
+  cliAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  cliAddr.sin_port = htons(0);
+  
+  rc = bind(sd, (struct sockaddr *) &cliAddr, sizeof(cliAddr));
+  if(rc<0) {
+    printf("%s: cannot bind port\n", argv[0]);
+    exit(1);
+  }
+
+
+  /* send data */
+  for(i=2;i<argc;i++) {
+    rc = sendto(sd, argv[i], strlen(argv[i])+1, 0, 
+		(struct sockaddr *) &remoteServAddr, 
+		sizeof(remoteServAddr));
+
+    if(rc<0) {
+      printf("%s: cannot send data %d \n",argv[0],i-1);
+      close(sd);
       exit(1);
-   }
-   port = htons(atoi(argv[2]));
+    }
 
+  }
+  
+  return 1;
 
-   /* Create a datagram socket in the internet domain and use the
-    * default protocol (UDP).
-    */
-   if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
-   {
-       tcperror("socket()");
-       exit(1);
-   }
-
-   /* Set up the server name */
-   server.sin_family      = AF_INET;            /* Internet Domain    */
-   server.sin_port        = port;               /* Server Port        */
-   server.sin_addr.s_addr = inet_addr(argv[1]); /* Server's Address   */
-
-   strcpy(buf, "Hello");
-
-   /* Send the message in buf to the server */
-   if (sendto(s, buf, (strlen(buf)+1), 0,
-                 (struct sockaddr *)&server, sizeof(server)) < 0)
-   {
-       tcperror("sendto()");
-       exit(2);
-   }
-
-   /* Deallocate the socket */
-   close(s);
 }
