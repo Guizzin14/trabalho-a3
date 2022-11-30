@@ -1,119 +1,81 @@
-/*** IBMCOPYR ********************************************************/
-/*                                                                   */
-/* Component Name: UDPS                                              */
-/*                                                                   */
-/*                                                                   */
-/* Copyright:    Licensed Materials - Property of IBM                */
-/*                                                                   */
-/*               "Restricted Materials of IBM"                       */
-/*                                                                   */
-/*               5647-A01                                            */
-/*                                                                   */
-/*               (C) Copyright IBM Corp. 1977, 1998                  */
-/*                                                                   */
-/*               US Government Users Restricted Rights -             */
-/*               Use, duplication or disclosure restricted by        */
-/*               GSA ADP Schedule Contract with IBM Corp.            */
-/*                                                                   */
-/* Status:       CSV2R6                                              */
-/*                                                                   */
-/*  SMP/E Distribution Name: EZAEC021                                */
-/*                                                                   */
-/*** IBMCOPYR ********************************************************/
+/* fpont 12/99 */
+/* pont.net    */
+/* udpClient.c */
 
-static char ibmcopyr[] =
-   "UDPS     - Licensed Materials - Property of IBM. "
-   "This module is \"Restricted Materials of IBM\" "
-   "5647-A01 (C) Copyright IBM Corp. 1992, 1996. "
-   "See IBM Copyright Instructions.";
-
-#include <manifest.h>
-#include <bsdtypes.h>
-#include <in.h>
-#include <socket.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <string.h> /* memset() */
+#include <sys/time.h> /* select() */ 
 
-main()
-{
-   int s, namelen, client_address_size;
-   struct sockaddr_in client, server;
-   char buf[32];
+#define REMOTE_SERVER_PORT 1500
+#define MAX_MSG 100
 
-   /*
-    * Create a datagram socket in the internet domain and use the
-    * default protocol (UDP).
-    */
-   if ((s = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
-   {
-       tcperror("socket()");
-       exit(1);
-   }
 
-   /*
-    * Bind my name to this socket so that clients on the network can
-    * send me messages. (This allows the operating system to demultiplex
-    * messages and get them to the correct server)
-    *
-    * Set up the server name. The internet address is specified as the
-    * wildcard INADDR_ANY so that the server can get messages from any
-    * of the physical internet connections on this host. (Otherwise we
-    * would limit the server to messages from only one network
-    * interface.)
-    */
-   server.sin_family      = AF_INET;  /* Server is in Internet Domain */
-   server.sin_port        = 0;         /* Use any available port      */
-   server.sin_addr.s_addr = INADDR_ANY;/* Server's Internet Address   */
+int main(int argc, char *argv[]) {
+  
+  int sd, rc, i;
+  struct sockaddr_in cliAddr, remoteServAddr;
+  struct hostent *h;
 
-   if (bind(s, (struct sockaddr *)&server, sizeof(server)) < 0)
-   {
-       tcperror("bind()");
-       exit(2);
-   }
+  /* check command line args */
+  if(argc<3) {
+    printf("usage : %s <server> <data1> ... <dataN> \n", argv[0]);
+    exit(1);
+  }
 
-   /* Find out what port was really assigned and print it */
-   namelen = sizeof(server);
-   if (getsockname(s, (struct sockaddr *) &server, &namelen) < 0)
-   {
-       tcperror("getsockname()");
-       exit(3);
-   }
+  /* get server IP address (no check if input is IP address or DNS name */
+  h = gethostbyname(argv[1]);
+  if(h==NULL) {
+    printf("%s: unknown host '%s' \n", argv[0], argv[1]);
+    exit(1);
+  }
 
-   printf("Port assigned is %d\n", ntohs(server.sin_port));
+  printf("%s: sending data to '%s' (IP : %s) \n", argv[0], h->h_name,
+	 inet_ntoa(*(struct in_addr *)h->h_addr_list[0]));
 
-   /*
-    * Receive a message on socket s in buf  of maximum size 32
-    * from a client. Because the last two paramters
-    * are not null, the name of the client will be placed into the
-    * client data structure and the size of the client address will
-    * be placed into client_address_size.
-    */
-   client_address_size = sizeof(client);
+  remoteServAddr.sin_family = h->h_addrtype;
+  memcpy((char *) &remoteServAddr.sin_addr.s_addr, 
+	 h->h_addr_list[0], h->h_length);
+  remoteServAddr.sin_port = htons(REMOTE_SERVER_PORT);
 
-   if(recvfrom(s, buf, sizeof(buf), 0, (struct sockaddr *) &client,
-            &client_address_size) <0)
-   {
-       tcperror("recvfrom()");
-       exit(4);
-   }
-   /*
-    * Print the message and the name of the client.
-    * The domain should be the internet domain (AF_INET).
-    * The port is received in network byte order, so we translate it to
-    * host byte order before printing it.
-    * The internet address is received as 32 bits in network byte order
-    * so we use a utility that converts it to a string printed in
-    * dotted decimal format for readability.
-    */
-   printf("Received message %s from domain %s port %d internet\
- address %s\n",
-       buf,
-       (client.sin_family == AF_INET?"AF_INET":"UNKNOWN"),
-       ntohs(client.sin_port),
-       inet_ntoa(client.sin_addr));
+  /* socket creation */
+  sd = socket(AF_INET,SOCK_DGRAM,0);
+  if(sd<0) {
+    printf("%s: cannot open socket \n",argv[0]);
+    exit(1);
+  }
+  
+  /* bind any port */
+  cliAddr.sin_family = AF_INET;
+  cliAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  cliAddr.sin_port = htons(0);
+  
+  rc = bind(sd, (struct sockaddr *) &cliAddr, sizeof(cliAddr));
+  if(rc<0) {
+    printf("%s: cannot bind port\n", argv[0]);
+    exit(1);
+  }
 
-   /*
-    * Deallocate the socket.
-    */
-   close(s);
+
+  /* send data */
+  for(i=2;i<argc;i++) {
+    rc = sendto(sd, argv[i], strlen(argv[i])+1, 0, 
+		(struct sockaddr *) &remoteServAddr, 
+		sizeof(remoteServAddr));
+
+    if(rc<0) {
+      printf("%s: cannot send data %d \n",argv[0],i-1);
+      close(sd);
+      exit(1);
+    }
+
+  }
+  
+  return 1;
+
 }
